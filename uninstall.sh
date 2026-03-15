@@ -80,10 +80,37 @@ for f in \
     fi
 done
 
-# --- 5. Delete install directory ---
+# --- 5. Delete install directory, optionally preserve rules ---
 if [ -d "$INSTALL_DIR" ]; then
-    rm -rf "$INSTALL_DIR"
-    echo "[context_guard] Removed $INSTALL_DIR"
+    HAS_RULES=false
+    for f in config.json allow.txt; do
+        if [ -f "$INSTALL_DIR/$f" ]; then
+            HAS_RULES=true
+            break
+        fi
+    done
+
+    if [ "$HAS_RULES" = true ]; then
+        printf "[context_guard] Keep your rules (config.json, allow.txt) for next install? [Y/n] "
+        read -r KEEP_RULES
+        KEEP_RULES="${KEEP_RULES:-Y}"
+        if [ "$KEEP_RULES" = "n" ] || [ "$KEEP_RULES" = "N" ]; then
+            rm -rf "$INSTALL_DIR"
+            echo "[context_guard] Removed $INSTALL_DIR (rules deleted)"
+        else
+            BACKUP_DIR="$HOME/.context_guard_backup"
+            mkdir -p "$BACKUP_DIR"
+            for f in config.json allow.txt; do
+                [ -f "$INSTALL_DIR/$f" ] && cp "$INSTALL_DIR/$f" "$BACKUP_DIR/$f"
+            done
+            rm -rf "$INSTALL_DIR"
+            echo "[context_guard] Removed $INSTALL_DIR"
+            echo "[context_guard] Rules saved to $BACKUP_DIR/ — restored automatically on next install."
+        fi
+    else
+        rm -rf "$INSTALL_DIR"
+        echo "[context_guard] Removed $INSTALL_DIR"
+    fi
 fi
 
 echo ""
