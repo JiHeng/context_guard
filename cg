@@ -1,0 +1,683 @@
+#!/usr/bin/env python3
+"""
+cg — context guard control CLI
+
+Usage:
+  cg start      Start proxy in background
+  cg stop       Stop proxy
+  cg pause      Pause filtering (proxy stays up)
+  cg resume     Resume filtering
+  cg status     Show running state and today's stats
+  cg rules      Manage detection rules (interactive)
+  cg update     Check for updates
+  cg uninstall  Completely remove context guard
+"""
+
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+from pathlib import Path
+
+_GUARD_DIR = Path.home() / ".context_guard"
+_PID_FILE = _GUARD_DIR / "proxy.pid"
+_LOG_FILE = _GUARD_DIR / "proxy.log"
+_CONFIG_FILE = _GUARD_DIR / "config.json"
+_LOCAL_CONFIG = Path(__file__).parent / "config.json"
+_SCRIPT = Path(__file__).parent / "context_guard.py"
+_SESSIONS_DIR = _GUARD_DIR / "sessions"
+_ALLOW_FILE = _GUARD_DIR / "allow.txt"
+
+
+def _config_path() -> Path:
+    return _CONFIG_FILE if _CONFIG_FILE.exists() else _LOCAL_CONFIG
+
+
+def _read_pid() -> int | None:
+    if not _PID_FILE.exists():
+        return None
+    try:
+        pid = int(_PID_FILE.read_text().strip())
+        os.kill(pid, 0)
+        return pid
+    except (ValueError, ProcessLookupError, PermissionError):
+        return None
+
+
+
+def cmd_start() -> None:
+    if _read_pid() is not None:
+        print("context guard: already running")
+        return
+    _GUARD_DIR.mkdir(parents=True, exist_ok=True)
+    log = open(_LOG_FILE, "a")
+    proc = subprocess.Popen(
+        [sys.executable, str(_SCRIPT), "serve"],
+        stdout=log,
+        stderr=log,
+        start_new_session=True,
+    )
+    # Write PID immediately so the statusline shows ON without delay
+    _PID_FILE.write_text(str(proc.pid))
+    # Wait briefly to catch immediate crashes
+    import time
+    time.sleep(0.5)
+    if proc.poll() is not None:
+        _PID_FILE.unlink(missing_ok=True)
+        print(f"context guard: failed to start — check {_LOG_FILE}")
+        sys.exit(1)
+    print(f"context guard: started (pid {proc.pid})")
+
+
+def _clean_stale_sessions() -> int:
+    """Remove session files for dead processes, return count of live sessions."""
+    if not _SESSIONS_DIR.exists():
+        return 0
+    live = 0
+    for f in _SESSIONS_DIR.iterdir():
+        try:
+            pid = int(f.name)
+            os.kill(pid, 0)
+            live += 1
+        except (ValueError, ProcessLookupError, PermissionError):
+            f.unlink(missing_ok=True)
+    return live
+
+
+def cmd_stop() -> None:
+    pid = _read_pid()
+    if pid is None:
+        print("context guard: not running")
+        return
+    # Refuse to stop while Claude Code sessions are active
+    live = _clean_stale_sessions()
+    if live > 0:
+        print("context guard: cannot stop — active Claude Code session detected")
+        print("  use 'cg pause' to disable filtering, or exit Claude Code first")
+        return
+    os.kill(pid, signal.SIGTERM)
+    print(f"context guard: stopped (pid {pid})")
+
+
+
+def _set_enabled(value: bool) -> None:
+    """Set the 'enabled' flag in config.json."""
+    p = _config_path()
+    data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    data["enabled"] = value
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def cmd_pause() -> None:
+    if _read_pid() is None:
+        print("context guard: not running")
+        return
+    _set_enabled(False)
+    print("context guard: paused (proxy still running, filtering disabled)")
+
+
+def cmd_resume() -> None:
+    if _read_pid() is None:
+        print("context guard: not running")
+        return
+    _set_enabled(True)
+    print("context guard: resumed (filtering enabled)")
+
+
+def cmd_status() -> None:
+    # Delegate to context_guard.py status for the full output
+    os.execv(sys.executable, [sys.executable, str(_SCRIPT), "status"])
+
+
+def cmd_acquire(args: list[str]) -> None:
+    """SessionStart hook: register session, ensure proxy is running."""
+    session_pid = args[0] if args else str(os.getppid())
+    _SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    (_SESSIONS_DIR / session_pid).touch()
+    _clean_stale_sessions()
+    _set_enabled(True)  # ensure filtering is on when a new session starts
+    cmd_start()  # idempotent
+
+
+def cmd_release(args: list[str]) -> None:
+    """SessionEnd hook: unregister session, stop proxy when last one exits."""
+    session_pid = args[0] if args else str(os.getppid())
+    (_SESSIONS_DIR / session_pid).unlink(missing_ok=True)
+    live = _clean_stale_sessions()
+    if live == 0:
+        cmd_stop()
+
+
+def cmd_update() -> None:
+    print("context guard: update — coming soon")
+
+
+def cmd_uninstall() -> None:
+    script = _GUARD_DIR / "uninstall.sh"
+    if not script.exists():
+        print("context guard: uninstall.sh not found — was it installed correctly?")
+        sys.exit(1)
+    os.execv("/bin/bash", ["/bin/bash", str(script)])
+
+
+# ── Rules management ──────────────────────────────────────────────────
+
+def _load_config_data() -> dict:
+    p = _config_path()
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+def _save_config_data(data: dict) -> None:
+    p = _config_path()
+    p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def _load_allow_entries() -> list[str]:
+    if not _ALLOW_FILE.exists():
+        return []
+    lines = []
+    for line in _ALLOW_FILE.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            lines.append(stripped)
+    return lines
+
+
+def _save_allow_entries(entries: list[str]) -> None:
+    _ALLOW_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _ALLOW_FILE.write_text("\n".join(entries) + ("\n" if entries else ""), encoding="utf-8")
+
+
+def _get_base_rules() -> list[tuple[str, str]]:
+    """Return deduplicated (category, description) for base rules."""
+    sys.path.insert(0, str(Path(__file__).parent))
+    from engine.rules import _BASE_RULES
+    seen = set()
+    result = []
+    for r in _BASE_RULES:
+        if r.category not in seen:
+            seen.add(r.category)
+            result.append((r.category, r.description))
+    return result
+
+
+def _get_catalog_rules() -> dict[str, str]:
+    """Return {name: description} for catalog rules."""
+    sys.path.insert(0, str(Path(__file__).parent))
+    from engine.rules import _CATALOG_RULES
+    return {name: desc for name, (desc, _, _) in _CATALOG_RULES.items()}
+
+
+def _rules_list_noninteractive() -> None:
+    """Print all rules (non-interactive, for programmatic use)."""
+    data = _load_config_data()
+    disabled = set(data.get("disabled_rules", []))
+    enabled = set(data.get("enabled_rules", []))
+    base = _get_base_rules()
+    catalog = _get_catalog_rules()
+
+    print("── Base rules ──")
+    for cat, desc in base:
+        if cat in disabled:
+            print(f"  ✗ {cat:<20s} {desc}  [disabled]")
+        else:
+            print(f"  ✓ {cat:<20s} {desc}")
+
+    print("\n── Catalog rules ──")
+    for name, desc in catalog.items():
+        if name in enabled and name not in disabled:
+            print(f"  ✓ {name:<20s} {desc}  [enabled]")
+        else:
+            print(f"  ✗ {name:<20s} {desc}")
+
+    kw_rules = data.get("keyword_rules", [])
+    if kw_rules:
+        print("\n── Keyword rules ──")
+        for kr in kw_rules:
+            print(f'  • "{kr["keyword"]}" ({kr.get("severity", "high")})')
+
+    extra = data.get("extra_patterns", [])
+    if extra:
+        print("\n── Custom patterns ──")
+        for ep in extra:
+            print(f'  • {ep.get("category", "custom")}: /{ep["pattern"]}/ ({ep.get("severity", "sensitive")})')
+
+    allow = _load_allow_entries()
+    if allow:
+        print("\n── Allowlist ──")
+        for entry in allow:
+            print(f"  • {entry}")
+
+
+def _rules_enable(name: str) -> None:
+    catalog = _get_catalog_rules()
+    data = _load_config_data()
+    base_cats = {cat for cat, _ in _get_base_rules()}
+
+    if name in base_cats:
+        # Remove from disabled_rules
+        dr = data.get("disabled_rules", [])
+        if name in dr:
+            dr.remove(name)
+            data["disabled_rules"] = dr
+            _save_config_data(data)
+            print(f"✓ {name} enabled")
+        else:
+            print(f"  {name} is already enabled")
+    elif name in catalog:
+        # Add to enabled_rules, remove from disabled
+        er = data.get("enabled_rules", [])
+        if name not in er:
+            er.append(name)
+            data["enabled_rules"] = er
+        dr = data.get("disabled_rules", [])
+        if name in dr:
+            dr.remove(name)
+            data["disabled_rules"] = dr
+        _save_config_data(data)
+        print(f"✓ {name} enabled")
+    else:
+        print(f"✗ unknown rule: {name}")
+        sys.exit(1)
+
+
+def _rules_disable(name: str) -> None:
+    catalog = _get_catalog_rules()
+    data = _load_config_data()
+    base_cats = {cat for cat, _ in _get_base_rules()}
+
+    if name in base_cats:
+        dr = data.get("disabled_rules", [])
+        if name not in dr:
+            dr.append(name)
+            data["disabled_rules"] = dr
+            _save_config_data(data)
+            print(f"✗ {name} disabled")
+        else:
+            print(f"  {name} is already disabled")
+    elif name in catalog:
+        er = data.get("enabled_rules", [])
+        if name in er:
+            er.remove(name)
+            data["enabled_rules"] = er
+        dr = data.get("disabled_rules", [])
+        if name not in dr:
+            dr.append(name)
+            data["disabled_rules"] = dr
+        _save_config_data(data)
+        print(f"✗ {name} disabled")
+    else:
+        print(f"✗ unknown rule: {name}")
+        sys.exit(1)
+
+
+def _rules_add_keyword(keyword: str, severity: str = "sensitive") -> None:
+    data = _load_config_data()
+    kw_rules = data.get("keyword_rules", [])
+    for kr in kw_rules:
+        if kr["keyword"] == keyword:
+            print(f'  keyword "{keyword}" already exists')
+            return
+    kw_rules.append({"keyword": keyword, "severity": severity})
+    data["keyword_rules"] = kw_rules
+    _save_config_data(data)
+    print(f'✓ keyword added: "{keyword}" ({severity})')
+
+
+def _rules_remove_keyword(keyword: str) -> None:
+    data = _load_config_data()
+    kw_rules = data.get("keyword_rules", [])
+    new = [kr for kr in kw_rules if kr["keyword"] != keyword]
+    if len(new) == len(kw_rules):
+        print(f'✗ keyword not found: "{keyword}"')
+        sys.exit(1)
+    data["keyword_rules"] = new
+    _save_config_data(data)
+    print(f'✓ keyword removed: "{keyword}"')
+
+
+def _rules_add_pattern(category: str, pattern: str, severity: str = "sensitive") -> None:
+    try:
+        re.compile(pattern)
+    except re.error as e:
+        print(f"✗ invalid regex: {e}")
+        sys.exit(1)
+    data = _load_config_data()
+    extra = data.get("extra_patterns", [])
+    extra.append({"category": category, "pattern": pattern, "severity": severity})
+    data["extra_patterns"] = extra
+    _save_config_data(data)
+    print(f"✓ pattern added: {category} /{pattern}/ ({severity})")
+
+
+def _rules_remove_pattern(category: str) -> None:
+    data = _load_config_data()
+    extra = data.get("extra_patterns", [])
+    new = [ep for ep in extra if ep.get("category") != category]
+    if len(new) == len(extra):
+        print(f"✗ pattern not found: {category}")
+        sys.exit(1)
+    data["extra_patterns"] = new
+    _save_config_data(data)
+    print(f"✓ pattern removed: {category}")
+
+
+def _rules_allow(value: str) -> None:
+    entries = _load_allow_entries()
+    if value in entries:
+        print(f"  already in allowlist: {value}")
+        return
+    entries.append(value)
+    _save_allow_entries(entries)
+    print(f"✓ added to allowlist: {value}")
+
+
+def _rules_deny(value: str) -> None:
+    entries = _load_allow_entries()
+    if value not in entries:
+        print(f"✗ not in allowlist: {value}")
+        sys.exit(1)
+    entries.remove(value)
+    _save_allow_entries(entries)
+    print(f"✓ removed from allowlist: {value}")
+
+
+# ── Interactive menus ─────────────────────────────────────────────────
+
+def _interactive_show() -> None:
+    _rules_list_noninteractive()
+    print()
+
+
+def _interactive_toggle() -> None:
+    while True:
+        data = _load_config_data()
+        disabled = set(data.get("disabled_rules", []))
+        enabled_catalog = set(data.get("enabled_rules", []))
+        base = _get_base_rules()
+        catalog = _get_catalog_rules()
+
+        items = []
+        print("\nToggle rules:")
+        idx = 1
+        for cat, desc in base:
+            on = cat not in disabled
+            mark = "✓" if on else "✗"
+            action = "disable" if on else "enable"
+            print(f"  [{idx}] {mark} {cat:<20s} → {action}")
+            items.append(("base", cat, on))
+            idx += 1
+        for name, desc in catalog.items():
+            on = name in enabled_catalog and name not in disabled
+            mark = "✓" if on else "✗"
+            action = "disable" if on else "enable"
+            print(f"  [{idx}] {mark} {name:<20s} → {action}")
+            items.append(("catalog", name, on))
+            idx += 1
+        print("  [0] Back")
+        try:
+            sel = input("\nSelect: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if sel == "0":
+            return
+        try:
+            n = int(sel) - 1
+            if 0 <= n < len(items):
+                _, name, on = items[n]
+                if on:
+                    _rules_disable(name)
+                else:
+                    _rules_enable(name)
+        except ValueError:
+            pass
+
+
+def _interactive_keywords() -> None:
+    while True:
+        data = _load_config_data()
+        kw_rules = data.get("keyword_rules", [])
+        print("\nKeyword rules:")
+        if kw_rules:
+            for i, kr in enumerate(kw_rules, 1):
+                print(f'  [{i}] "{kr["keyword"]}" ({kr.get("severity", "high")})')
+        else:
+            print("  (none)")
+        print("\n  [a] Add keyword")
+        print("  [d] Delete keyword (enter number)")
+        print("  [0] Back")
+        try:
+            sel = input("\nSelect: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if sel == "0":
+            return
+        elif sel == "a":
+            try:
+                kw = input("  Keyword: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                continue
+            if not kw:
+                continue
+            try:
+                sev = input("  Severity [sensitive]: ").strip() or "sensitive"
+            except (EOFError, KeyboardInterrupt):
+                sev = "sensitive"
+            _rules_add_keyword(kw, sev)
+        elif sel == "d":
+            try:
+                num = input("  Number to delete: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                continue
+            try:
+                n = int(num) - 1
+                if 0 <= n < len(kw_rules):
+                    _rules_remove_keyword(kw_rules[n]["keyword"])
+            except ValueError:
+                pass
+
+
+def _interactive_patterns() -> None:
+    while True:
+        data = _load_config_data()
+        extra = data.get("extra_patterns", [])
+        print("\nCustom patterns:")
+        if extra:
+            for i, ep in enumerate(extra, 1):
+                print(f'  [{i}] {ep.get("category", "custom")}: /{ep["pattern"]}/ ({ep.get("severity", "sensitive")})')
+        else:
+            print("  (none)")
+        print("\n  [a] Add pattern")
+        print("  [d] Delete pattern (enter number)")
+        print("  [0] Back")
+        try:
+            sel = input("\nSelect: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if sel == "0":
+            return
+        elif sel == "a":
+            try:
+                cat = input("  Category name: ").strip()
+                pat = input("  Regex pattern: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                continue
+            if not cat or not pat:
+                continue
+            try:
+                sev = input("  Severity [sensitive]: ").strip() or "sensitive"
+            except (EOFError, KeyboardInterrupt):
+                sev = "sensitive"
+            _rules_add_pattern(cat, pat, sev)
+        elif sel == "d":
+            try:
+                num = input("  Number to delete: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                continue
+            try:
+                n = int(num) - 1
+                if 0 <= n < len(extra):
+                    _rules_remove_pattern(extra[n].get("category", "custom"))
+            except ValueError:
+                pass
+
+
+def _interactive_allowlist() -> None:
+    while True:
+        entries = _load_allow_entries()
+        print("\nAllowlist entries:")
+        if entries:
+            for i, e in enumerate(entries, 1):
+                print(f"  [{i}] {e}")
+        else:
+            print("  (none)")
+        print("\n  [a] Add (exact match)")
+        print("  [r] Add (regex)")
+        print("  [d] Delete (enter number)")
+        print("  [0] Back")
+        try:
+            sel = input("\nSelect: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if sel == "0":
+            return
+        elif sel == "a":
+            try:
+                val = input("  Exact string: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                continue
+            if val:
+                _rules_allow(val)
+        elif sel == "r":
+            try:
+                val = input("  Regex pattern: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                continue
+            if val:
+                try:
+                    re.compile(val)
+                except re.error as e:
+                    print(f"  ✗ invalid regex: {e}")
+                    continue
+                _rules_allow(f"re:{val}")
+        elif sel == "d":
+            try:
+                num = input("  Number to delete: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                continue
+            try:
+                n = int(num) - 1
+                if 0 <= n < len(entries):
+                    _rules_deny(entries[n])
+            except ValueError:
+                pass
+
+
+def _interactive_rules() -> None:
+    while True:
+        print("\ncontext guard — Rule Configuration\n")
+        print("[1] Show all rules")
+        print("[2] Enable / disable rules")
+        print("[3] Manage keyword rules")
+        print("[4] Manage custom patterns")
+        print("[5] Manage allowlist")
+        print("[0] Exit")
+        try:
+            sel = input("\nSelect: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if sel == "0":
+            return
+        elif sel == "1":
+            print()
+            _interactive_show()
+        elif sel == "2":
+            _interactive_toggle()
+        elif sel == "3":
+            _interactive_keywords()
+        elif sel == "4":
+            _interactive_patterns()
+        elif sel == "5":
+            _interactive_allowlist()
+
+
+def cmd_rules(args: list[str]) -> None:
+    """Manage detection rules. No args = interactive; with args = direct command."""
+    if not args:
+        _interactive_rules()
+        return
+
+    sub = args[0]
+    if sub == "list":
+        _rules_list_noninteractive()
+    elif sub == "enable" and len(args) >= 2:
+        _rules_enable(args[1])
+    elif sub == "disable" and len(args) >= 2:
+        _rules_disable(args[1])
+    elif sub == "allow" and len(args) >= 2:
+        _rules_allow(args[1])
+    elif sub == "deny" and len(args) >= 2:
+        _rules_deny(args[1])
+    elif sub == "add" and len(args) >= 3 and args[1] == "keyword":
+        sev = args[3] if len(args) >= 4 else "sensitive"
+        _rules_add_keyword(args[2], sev)
+    elif sub == "remove" and len(args) >= 3 and args[1] == "keyword":
+        _rules_remove_keyword(args[2])
+    elif sub == "add" and len(args) >= 4 and args[1] == "pattern":
+        sev = args[4] if len(args) >= 5 else "sensitive"
+        _rules_add_pattern(args[2], args[3], sev)
+    elif sub == "remove" and len(args) >= 3 and args[1] == "pattern":
+        _rules_remove_pattern(args[2])
+    else:
+        print("Usage: cg rules [list|enable|disable|allow|deny|add|remove]")
+        sys.exit(1)
+
+
+_COMMANDS = {
+    "start": cmd_start,
+    "stop": cmd_stop,
+    "pause": cmd_pause,
+    "resume": cmd_resume,
+    "status": cmd_status,
+    "update": cmd_update,
+    "uninstall": cmd_uninstall,
+}
+
+_COMMANDS_WITH_ARGS = {
+    "_acquire": cmd_acquire,
+    "_release": cmd_release,
+    "rules": cmd_rules,
+}
+
+
+def main() -> None:
+    if len(sys.argv) < 2:
+        print(__doc__)
+        sys.exit(1)
+    cmd_name = sys.argv[1]
+    if cmd_name in _COMMANDS:
+        _COMMANDS[cmd_name]()
+    elif cmd_name in _COMMANDS_WITH_ARGS:
+        _COMMANDS_WITH_ARGS[cmd_name](sys.argv[2:])
+    else:
+        print(__doc__)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

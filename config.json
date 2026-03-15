@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "port": 8765,
+  "disabled_rules": [],
+  "enabled_rules": [],
+  "keyword_rules": [],
+  "extra_patterns": [],
+  "internal_domains": [],
+  "openai_upstream": "https://api.openai.com"
+}
