@@ -10,6 +10,18 @@ REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 echo "[context_guard] Installing to $INSTALL_DIR ..."
 mkdir -p "$INSTALL_DIR"
 
+# Restore user rules from backup if available (left by uninstall)
+BACKUP_DIR="$HOME/.context_guard_backup"
+if [ -d "$BACKUP_DIR" ]; then
+    for f in config.json allow.txt; do
+        if [ -f "$BACKUP_DIR/$f" ] && [ ! -f "$INSTALL_DIR/$f" ]; then
+            cp "$BACKUP_DIR/$f" "$INSTALL_DIR/$f"
+        fi
+    done
+    rm -rf "$BACKUP_DIR"
+    echo "[context_guard] Restored rules from previous installation"
+fi
+
 # Copy all source files
 cp -r "$REPO_DIR/engine"           "$INSTALL_DIR/"
 cp -r "$REPO_DIR/proxy"            "$INSTALL_DIR/"
