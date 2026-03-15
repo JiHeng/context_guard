@@ -47,10 +47,34 @@ def _read_pid() -> int | None:
 
 
 
+def _kill_stale_port_holder() -> None:
+    """Kill any orphaned proxy holding our port."""
+    import socket
+    import time
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("127.0.0.1", 8765))
+        sock.close()
+    except OSError:
+        # Port in use by orphan — find and kill via ss
+        sock.close()
+        result = subprocess.run(
+            ["ss", "-tlnp", "sport = :8765"],
+            capture_output=True, text=True,
+        )
+        for line in result.stdout.splitlines():
+            m = re.search(r'pid=(\d+)', line)
+            if m:
+                os.kill(int(m.group(1)), signal.SIGTERM)
+                time.sleep(0.3)
+                break
+
+
 def cmd_start() -> None:
     if _read_pid() is not None:
         print("context guard: already running")
         return
+    _kill_stale_port_holder()
     _GUARD_DIR.mkdir(parents=True, exist_ok=True)
     log = open(_LOG_FILE, "a")
     proc = subprocess.Popen(
