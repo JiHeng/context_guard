@@ -46,18 +46,19 @@ Every outbound message is scanned against a rule set. Matches are replaced with 
 
 ## What gets redacted
 
-You can enable predefined patterns:
+**On by default:** API keys, AWS keys, tokens, JWTs, bearer tokens, private keys, env secrets, database credentials, email addresses, phone numbers, URL tokens.
 
-Email, Phone Number, Credit cards, SSNs, Chinese national IDs, passports, IBANs, IP addresses, UUIDs, dates of birth.
+**Available to enable:** Credit cards, SSNs, Chinese national IDs, passports, IBANs, IP addresses, UUIDs, dates of birth.
 
 You can also define your own deny and allow list.
 
 ## How-to guide
 
-### Just `/cg` in Claude!
+### Manage rules with `/cg`
 
-Context guard can be managed in claude with `/cg` command or the command you defined during the installation. Just `/cg` followed by what you want to do.
+Context Guard is managed with `/cg` inside Claude Code (or the alternative name you picked if `/cg` was already taken). Just `/cg` followed by what you want to do.
 
+**Want to manage it in terminal?** Just remove the `/`, and run `cg`
 
 **Examples**
 
@@ -68,19 +69,12 @@ Context guard can be managed in claude with `/cg` command or the command you def
 /cg show rules
 ```
 
-
-### Manage rules with `/cg`
-
-You can manage rules from inside Claude Code using commands:
-
-**Want to manage it in terminal?** Just remove the `/`, and run `cg`
-
-**Commands:**
+**Full command reference:**
 ```
 /cg rules                          # interactive rule manager
 /cg rules list                     # show all rules
-/cg rules enable credit_card       # enable a catalog rule
-/cg rules disable email            # disable a built-in rule
+/cg rules enable credit_card       # enable a rule
+/cg rules disable email            # disable a rule
 /cg rules add keyword "Project X"  # block a keyword
 /cg rules remove keyword "Project X"
 /cg rules allow "10.0.0.1"         # allowlist a value
@@ -146,4 +140,8 @@ From the terminal:
 ```bash
 cg uninstall
 ```
+
+## Disclaimer
+
+This is a personal project provided as-is, with no warranties of any kind. The author is not responsible for any damages, data loss, or security incidents arising from its use. Use at your own risk.
 
