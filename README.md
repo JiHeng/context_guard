@@ -11,7 +11,12 @@ One-command installation and set up in Claude. No hooks. No scripts. No configur
 **macOS / Linux / WSL:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/REPO_OWNER/REPO_NAME/main/install-remote.sh | bash
+curl -fsSL https://raw.githubusercontent.com/JiHeng/context_guard/main/install-remote.sh | bash
+```
+
+To install a specific version:
+```bash
+VERSION=0.0.1 curl -fsSL https://raw.githubusercontent.com/JiHeng/context_guard/main/install-remote.sh | bash
 ```
 
 The installer:
