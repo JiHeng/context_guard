@@ -5,6 +5,7 @@ POST /v1/chat/completions (OpenAI), redacts PII/secrets, then forwards upstream.
 
 import json
 import os
+import signal
 import sys
 import urllib.error
 import urllib.request
@@ -160,13 +161,17 @@ def start(port: int = DEFAULT_PORT, config: Config | None = None, allowlist: All
     for w in config.warnings:
         print(f"[context_guard] ⚠ Config warning: {w}", file=sys.stderr)
 
+    def _handle_sigterm(signum, frame):
+        raise SystemExit(0)
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+
     server = HTTPServer(("127.0.0.1", port), ProxyHandler)
     print(f"[context_guard] proxy listening on http://127.0.0.1:{port}")
     print(f"[context_guard] rules: {n_rules} active, {n_disabled} disabled, allowlist: {n_allow} entries")
     print(f"[context_guard] set ANTHROPIC_BASE_URL=http://127.0.0.1:{port}")
     try:
         server.serve_forever()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         print("\n[context_guard] shutting down.")
         server.server_close()
     finally:

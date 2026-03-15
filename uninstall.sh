@@ -20,6 +20,24 @@ if [ -f "$PID_FILE" ]; then
     fi
 fi
 
+# --- 1b. Warn about active Claude Code sessions ---
+SESSIONS_DIR="$INSTALL_DIR/sessions"
+if [ -d "$SESSIONS_DIR" ]; then
+    LIVE=0
+    for f in "$SESSIONS_DIR"/*; do
+        [ -f "$f" ] || continue
+        PID="$(basename "$f")"
+        kill -0 "$PID" 2>/dev/null && LIVE=$((LIVE + 1))
+    done
+    if [ "$LIVE" -gt 0 ]; then
+        echo "[context_guard] Warning: $LIVE active Claude Code session(s) detected."
+        echo "[context_guard] Session hooks will show errors after uninstall."
+        printf "[context_guard] Continue? [y/N] "
+        read -r CONFIRM
+        [ "$CONFIRM" = "y" ] || [ "$CONFIRM" = "Y" ] || { echo "[context_guard] Cancelled."; exit 0; }
+    fi
+fi
+
 # --- 2. Remove shell RC block ---
 for RC_FILE in "$HOME/.bashrc" "$HOME/.zshrc"; do
     if [ -f "$RC_FILE" ] && grep -qF '# BEGIN context_guard' "$RC_FILE" 2>/dev/null; then

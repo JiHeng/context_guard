@@ -22,7 +22,7 @@ Run the matching command below. If `$ARGUMENTS` is empty, treat it as `status`.
 | `rules ...`| `python3 ~/.context_guard/cg rules ...` (pass all sub-arguments) |
 | `update`   | `python3 ~/.context_guard/cg update` |
 | `no-guard`   | Tell the user: `cg no-guard` runs Claude without the proxy — use it from the shell, not from within Claude Code. |
-| `uninstall`  | `python3 ~/.context_guard/cg uninstall` — **warn the user first** that this will completely remove context guard (proxy, shell config, Claude hooks). Only proceed if they confirm. |
+| `uninstall`  | Tell the user: uninstall requires interactive prompts (active session warning, rules backup) — run `cg uninstall` from the terminal outside Claude Code. |
 
 ## Natural language rule configuration
 
