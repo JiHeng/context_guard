@@ -40,6 +40,22 @@ Examples:
 
 Show the command output to the user after execution.
 
+## Redacted values
+
+The proxy may redact secrets/PII in the user's message before you see it. If the user's argument contains a `[REDACTED:…]` placeholder (e.g. `"add keyword [REDACTED:api_key]"`), you **cannot** know the original value. In this case:
+
+1. **Do NOT run the command** — it would store the literal placeholder string, which is useless.
+2. Instead, give the user the ready-to-run CLI command with `<VALUE>` in place of the redacted token and tell them to replace `<VALUE>` with the actual value and run it in their terminal.
+
+Example — user says: `add keyword [REDACTED:api_key]`
+→ Respond:
+> The value was redacted by the proxy, so I can't see it. Run this in your terminal with the actual value filled in:
+> ```
+> cg rules add keyword "<VALUE>"
+> ```
+
+This applies to `rules add keyword`, `rules add pattern`, `rules allow`, and `rules deny` — any command where the argument itself is a sensitive value that may have been redacted.
+
 If the subcommand is not in the table above and does not express a rule-configuration intent, show the list of available subcommands.
 
 ## Current proxy state
