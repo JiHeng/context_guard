@@ -5,6 +5,7 @@ OpenAI message content can be:
   - a plain string: {"role": "user", "content": "..."}
   - a list of blocks: {"role": "user", "content": [{"type": "text", "text": "..."}]}
 """
+from __future__ import annotations
 
 from engine.redactor import Redactor
 

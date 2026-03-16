@@ -1,6 +1,7 @@
 """
 Config loader: reads config.json and returns a validated Config object.
 """
+from __future__ import annotations
 
 import difflib
 import json

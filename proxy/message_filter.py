@@ -1,6 +1,7 @@
 """
 MessageFilter: traverses Anthropic API request payload and redacts all text content.
 """
+from __future__ import annotations
 
 from engine.redactor import Redactor
 

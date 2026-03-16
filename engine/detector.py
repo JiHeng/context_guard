@@ -1,6 +1,7 @@
 """
 Content scanner: scans text and returns a list of Finding objects.
 """
+from __future__ import annotations
 
 import re
 from dataclasses import dataclass

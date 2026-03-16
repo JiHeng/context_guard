@@ -12,6 +12,8 @@ Usage:
   context_guard.py --test [TEXT]      Scan TEXT (or stdin) and print findings
 """
 
+from __future__ import annotations
+
 import sys
 import os
 import json

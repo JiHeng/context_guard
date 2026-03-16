@@ -7,6 +7,7 @@ Format (one entry per line):
   re:<pattern>      — regex match skips redaction
   # comment lines and blank lines are ignored
 """
+from __future__ import annotations
 
 import re
 from pathlib import Path
