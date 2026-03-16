@@ -8,6 +8,25 @@ One-command installation. No custom hooks, scripts, or configuration required.
 
 * * *
 
+## Why not hooks or permission settings?
+
+I wanted to use Claude Code to process some files, but I don't want my emails, address, SSN leaked to Claude Code's model context.
+
+Permissions deny blocks access to files. But I need Claude code to read these files. It's just the sensitive information has to be redacted.
+
+Hooks let you inject messages into context, no rewrite.
+
+Context guard sits between Claude Code CLI and Anthropics' API and redact sensitive information in the model context. 
+Every outbound message is scanned against a rule set. Matches are replaced with tokens like `[REDACTED:email]` before the request reaches the API. The model sees the redacted version — your real data never leaves your machine.
+
+```
+Claude Code
+    |  ANTHROPIC_BASE_URL=http://127.0.0.1:8765
+context guard proxy  <--  scans & redacts
+    |  forwarded (clean)
+api.anthropic.com
+```
+
 ## 🚀 Quick Install
 
 **macOS / Linux / WSL:**
@@ -37,20 +56,6 @@ Or simply open a new terminal tab/window.
 
 * * *
 
-## 🧩 How It Works
-
-```
-Claude Code
-    |  ANTHROPIC_BASE_URL=http://127.0.0.1:8765
-context guard proxy  <--  scans & redacts
-    |  forwarded (clean)
-api.anthropic.com
-```
-
-Every outbound message is scanned against a rule set. Matches are replaced with tokens like `[REDACTED:email]` before the request reaches the API. The model sees the redacted version — your real data never leaves your machine.
-
-* * *
-
 ## 🔒 What Gets Redacted
 
 | Category | Rules | Default |
@@ -63,7 +68,7 @@ Every outbound message is scanned against a rule set. Matches are replaced with 
 | **Network / IDs** | IP addresses, UUIDs | ⚙️ Opt-in |
 | **Dates** | Dates of birth | ⚙️ Opt-in |
 
-You can also define your own **deny list** and **allow list**.
+You can also define your own **block list** and **allow list**.
 
 * * *
 
@@ -78,23 +83,24 @@ Context Guard is managed with `/cg` inside Claude Code (or the alternative name 
 **Examples:**
 
 ```
-/cg enable credit card detection
-/cg add keyword Project Titan
-/cg allow 10.0.0.1
-/cg show rules
+/cg block credit_card
+/cg block keyword "Project Titan"
+/cg unblock 10.0.0.1
+/cg list
 ```
 
 **Full command reference:**
 ```
+/cg block email                    # enable a rule (redact)
+/cg unblock email                  # disable a rule (stop redacting)
+/cg block keyword "Project X"      # block a keyword
+/cg unblock keyword "Project X"    # remove keyword
+/cg block regex "PROJ-\d+"         # block a custom regex pattern
+/cg unblock regex "PROJ-\d+"       # remove custom regex pattern
+/cg unblock "10.0.0.1"             # allowlist a value
+/cg block "10.0.0.1"               # remove from allowlist
+/cg list                           # show all rules
 /cg rules                          # interactive rule manager
-/cg rules list                     # show all rules
-/cg rules enable credit_card       # enable a rule
-/cg rules disable email            # disable a rule
-/cg rules add keyword "Project X"  # block a keyword
-/cg rules remove keyword "Project X"
-/cg rules allow "10.0.0.1"         # allowlist a value
-/cg rules deny "10.0.0.1"          # remove from allowlist
-/cg rules add pattern "internal_id" "PROJ-\d+"  # custom regex
 ```
 
 * * *
@@ -103,24 +109,24 @@ Context Guard is managed with `/cg` inside Claude Code (or the alternative name 
 
 - **Custom keywords** — block specific words or phrases from being sent to the API:
   ```bash
-  /cg rules add keyword "Project Titan"
-  /cg rules add keyword "Confidential"
+  /cg block keyword "Project Titan"
+  /cg block keyword "Confidential"
   ```
   Keywords are matched case-insensitively with word boundaries.
 
 - **Custom regex patterns** — match structured data:
   ```
-  /cg rules add pattern "employee_id" "EMP-\d{6}"
+  /cg block regex "EMP-\d{6}"
   ```
 
 - **Allowlist values** — if a legitimate value is being redacted:
   ```
-  /cg rules allow "alice@yourcompany.com"
+  /cg unblock "user@example.com"
   ```
 
-- **Regex allowlist** — allowlist by pattern:
+- **Regex allowlist** — allowlist by pattern (use interactive mode):
   ```
-  /cg rules allow "re:.*@yourcompany\.com"
+  /cg rules
   ```
 
 * * *

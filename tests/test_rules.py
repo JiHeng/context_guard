@@ -53,11 +53,6 @@ class TestBuildRules:
         cc_rules = [r for r in rules if r.category == "credit_card"]
         assert cc_rules and cc_rules[0].validator is not None
 
-    def test_phone_skip_code_fences(self):
-        rules = build_rules()
-        phone_rules = [r for r in rules if r.category == "phone"]
-        assert phone_rules and all(r.skip_code_fences for r in phone_rules)
-
 
 class TestKeywordToRule:
     def test_basic_keyword(self):

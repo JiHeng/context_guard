@@ -11,34 +11,6 @@ from typing import Callable
 
 
 # ---------------------------------------------------------------------------
-# Code fence utilities
-# ---------------------------------------------------------------------------
-
-_CODE_FENCE_RE = re.compile(r"^```", re.MULTILINE)
-
-
-def find_code_fence_ranges(text: str) -> list[tuple[int, int]]:
-    """Return a list of (start, end) byte-offset ranges for fenced code blocks."""
-    fences = list(_CODE_FENCE_RE.finditer(text))
-    ranges: list[tuple[int, int]] = []
-    i = 0
-    while i + 1 < len(fences):
-        start = fences[i].start()
-        end = fences[i + 1].end()
-        ranges.append((start, end))
-        i += 2
-    return ranges
-
-
-def is_in_code_fence(pos: int, ranges: list[tuple[int, int]]) -> bool:
-    """Return True if *pos* falls inside any code fence range."""
-    for start, end in ranges:
-        if start <= pos < end:
-            return True
-    return False
-
-
-# ---------------------------------------------------------------------------
 # Individual validators
 # ---------------------------------------------------------------------------
 

@@ -6,7 +6,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from engine.rules import build_rules
-from engine.validators import find_code_fence_ranges, is_in_code_fence
 
 
 @dataclass
@@ -31,7 +30,6 @@ class Detector:
     def scan(self, text: str) -> list[Finding]:
         findings = []
         seen_spans = []  # track (start, end) to avoid duplicate overlapping matches
-        fence_ranges = find_code_fence_ranges(text)
 
         for rule in self._rules:
             category, severity, pattern = rule.category, rule.severity, rule.pattern
@@ -42,10 +40,6 @@ class Detector:
                 if overlapping:
                     continue
                 matched = m.group(0)
-                # Code fence skip (only for format-only rules like phone/ssn)
-                if rule.skip_code_fences and fence_ranges:
-                    if is_in_code_fence(start, fence_ranges):
-                        continue
                 # Structural validator
                 if rule.validator and not rule.validator(matched, text, m):
                     continue

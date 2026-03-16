@@ -10,8 +10,6 @@ from engine.validators import (
     validate_ssn,
     validate_ip_address,
     validate_email,
-    find_code_fence_ranges,
-    is_in_code_fence,
 )
 
 
@@ -108,23 +106,3 @@ class TestEmail:
         assert validate_email("bar@example.org", "", None) is False
 
 
-class TestCodeFenceRanges:
-    def test_single_fence(self):
-        text = "before\n```\ncode\n```\nafter"
-        ranges = find_code_fence_ranges(text)
-        assert len(ranges) == 1
-        assert ranges[0][0] < ranges[0][1]
-
-    def test_no_fences(self):
-        assert find_code_fence_ranges("no fences here") == []
-
-    def test_unclosed_fence(self):
-        text = "```\ncode without closing"
-        ranges = find_code_fence_ranges(text)
-        assert ranges == []
-
-    def test_is_in_code_fence(self):
-        ranges = [(10, 50)]
-        assert is_in_code_fence(20, ranges) is True
-        assert is_in_code_fence(5, ranges) is False
-        assert is_in_code_fence(50, ranges) is False
