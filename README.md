@@ -14,7 +14,7 @@ I wanted to use Claude Code to process some files, but I don't want my emails, a
 
 Permissions deny blocks access to files. But I need Claude code to read these files. It's just the sensitive information has to be redacted.
 
-Hooks let you inject messages into context. It's hard to modify and custom scripts are needed.
+Hooks let you inject messages into context, no rewrite.
 
 Context guard sits between Claude Code CLI and Anthropics' API and redact sensitive information in the model context. 
 Every outbound message is scanned against a rule set. Matches are replaced with tokens like `[REDACTED:email]` before the request reaches the API. The model sees the redacted version — your real data never leaves your machine.

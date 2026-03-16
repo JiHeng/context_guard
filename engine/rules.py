@@ -19,7 +19,6 @@ class Rule:
     source: str = "builtin"   # builtin | catalog | keyword | custom
     description: str = ""
     validator: Callable | None = None       # post-match validator (return True = real hit)
-    skip_code_fences: bool = False          # skip matches inside ``` blocks
 
 
 def _r(cat: str, sev: str, pat: re.Pattern, desc: str = "") -> Rule:
@@ -118,12 +117,17 @@ _CATALOG_RULES: dict[str, tuple[str, str, re.Pattern]] = {
 }
 
 
+def _is_ascii_word_char(ch: str) -> bool:
+    return ch.isascii() and (ch.isalnum() or ch == "_")
+
+
 def keyword_to_rule(keyword: str, severity: str = "high") -> Rule:
     """Convert a plain keyword/phrase to a Rule with case-insensitive whole-word matching."""
     escaped = re.escape(keyword)
-    # Use word boundaries only when keyword starts/ends with word characters
-    left  = r"\b" if (keyword[0].isalnum()  or keyword[0]  == "_") else r"(?<!\w)"
-    right = r"\b" if (keyword[-1].isalnum() or keyword[-1] == "_") else r"(?!\w)"
+    # Use \b only for ASCII word characters; for non-ASCII (e.g. CJK),
+    # \b fails between consecutive Unicode \w chars, so match without boundary.
+    left  = r"\b" if _is_ascii_word_char(keyword[0])  else r"(?<!\w)" if keyword[0]  == "_" else ""
+    right = r"\b" if _is_ascii_word_char(keyword[-1]) else r"(?!\w)"  if keyword[-1] == "_" else ""
     pattern = re.compile(f"(?i){left}{escaped}{right}")
     category = keyword.lower().replace(" ", "_")[:40]
     return Rule(
@@ -156,13 +160,10 @@ def build_rules(config=None) -> list[Rule]:
             if ep.category not in disabled:
                 rules.append(Rule(ep.category, ep.severity, ep.pattern, "custom", "Custom regex"))
 
-    # Attach validators and code-fence skip flags
+    # Attach validators
     from engine.validators import VALIDATORS
-    _SKIP_CODE_FENCES = {"phone", "ssn"}
     for rule in rules:
         if rule.category in VALIDATORS and rule.validator is None:
             rule.validator = VALIDATORS[rule.category]
-        if rule.category in _SKIP_CODE_FENCES:
-            rule.skip_code_fences = True
 
     return rules

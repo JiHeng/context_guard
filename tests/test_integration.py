@@ -211,32 +211,6 @@ class TestFalsePositiveIntegration:
         cats = {f.category for f in findings}
         assert "iban" not in cats
 
-    def test_fp_code_fence_phone_not_redacted(self, full_redactor):
-        text = "```\n555-123-4567\n```"
-        result, cats = full_redactor.redact(text)
-        assert "555-123-4567" in result
-        assert "phone" not in cats
-
-    def test_fp_code_fence_ssn_not_redacted(self):
-        config = Config(enabled_rules=["ssn"])
-        redactor = Redactor(rules=build_rules(config))
-        text = "```\n123-45-6789\n```"
-        result, cats = redactor.redact(text)
-        assert "123-45-6789" in result
-        assert "ssn" not in cats
-
-    def test_fp_code_fence_api_key_still_redacted(self, full_redactor):
-        text = "```\nsk-ant-api03-abcdefghijklmnopqrstuvwxyz\n```"
-        result, cats = full_redactor.redact(text)
-        assert "[REDACTED:api_key]" in result
-
-    def test_fp_code_fence_valid_cc_still_redacted(self):
-        config = Config(enabled_rules=["credit_card"])
-        redactor = Redactor(rules=build_rules(config))
-        text = "```\n4111111111111111\n```"
-        result, cats = redactor.redact(text)
-        assert "[REDACTED:credit_card]" in result
-
 
 # ---------------------------------------------------------------------------
 # Edge cases and boundary conditions
@@ -360,3 +334,104 @@ class TestOpenAIFilterEdgeCases:
         assert "api_key" in cats
         # image block untouched
         assert result["messages"][0]["content"][0]["type"] == "image_url"
+
+
+# ---------------------------------------------------------------------------
+# Edge-case integration tests
+# ---------------------------------------------------------------------------
+
+class TestEdgeCasesExtended:
+    """Additional edge-case and stress tests for the full pipeline."""
+
+    def test_large_payload_1mb(self):
+        anthr, _ = _make_filter()
+        filler = "The quick brown fox jumps over the lazy dog. " * 23_000
+        mid = len(filler) // 2
+        secret_text = filler[:mid] + " sk-ant-api03-aaaaaaaaaaaaaaaaaaaaaa " + filler[mid:]
+        payload = _anthropic_payload(secret_text)
+        result, cats, diffs = anthr.process(payload)
+        assert "api_key" in cats
+        assert "[REDACTED:api_key]" in result["messages"][0]["content"]
+        assert "sk-ant-api03-" not in result["messages"][0]["content"]
+
+    def test_deeply_nested_tool_result(self):
+        anthr, _ = _make_filter()
+        payload = {
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "content": [
+                            {"type": "text", "text": "level-2 secret: sk-ant-api03-bbbbbbbbbbbbbbbbbbbbbb"},
+                        ],
+                    },
+                    {"type": "text", "text": "level-1 email: alice@realco.io"},
+                ],
+            }]
+        }
+        result, cats, diffs = anthr.process(payload)
+        assert "api_key" in cats
+        assert "email" in cats
+        tr_block = result["messages"][0]["content"][0]
+        assert "[REDACTED:api_key]" in tr_block["content"][0]["text"]
+        txt_block = result["messages"][0]["content"][1]
+        assert "[REDACTED:email]" in txt_block["text"]
+
+    def test_binary_like_content(self):
+        anthr, _ = _make_filter()
+        text = "before\x00\x01\x02\x03 sk-ant-api03-cccccccccccccccccccccc \x00after"
+        payload = _anthropic_payload(text)
+        result, cats, diffs = anthr.process(payload)
+        assert "api_key" in cats
+        assert "[REDACTED:api_key]" in result["messages"][0]["content"]
+        assert "\x00" in result["messages"][0]["content"]
+
+    def test_empty_body_no_crash(self):
+        anthr, _ = _make_filter()
+        payload = {"messages": [{"role": "user", "content": ""}]}
+        result, cats, diffs = anthr.process(payload)
+        assert cats == []
+        assert result["messages"][0]["content"] == ""
+
+    def test_no_messages_key(self):
+        anthr, _ = _make_filter()
+        payload = {}
+        result, cats, diffs = anthr.process(payload)
+        assert cats == []
+        assert diffs == []
+
+    def test_long_single_line_500kb(self):
+        anthr, _ = _make_filter()
+        filler = "A" * (250 * 1024)
+        text = filler + "sk-ant-api03-dddddddddddddddddddddd" + filler
+        payload = _anthropic_payload(text)
+        result, cats, diffs = anthr.process(payload)
+        assert "api_key" in cats
+        assert "[REDACTED:api_key]" in result["messages"][0]["content"]
+        assert "sk-ant-api03-" not in result["messages"][0]["content"]
+
+    def test_overlapping_pattern_no_double_redaction(self):
+        redactor = Redactor(rules=build_rules())
+        text = "token=Bearer xyzxyzxyzxyzxyzxyzxyzxyz1234"
+        result, cats = redactor.redact(text)
+        assert "[REDACTED:" in result
+        import re as _re
+        nested = _re.search(r"\[REDACTED:[^\]]*\[REDACTED:", result)
+        assert nested is None, f"Double-redaction detected: {result!r}"
+
+    def test_keyword_cjk_unicode(self):
+        config = Config(keyword_rules=[KeywordRule(keyword="机密")])
+        anthr, _ = _make_filter(config=config)
+        payload = _anthropic_payload("这是机密信息")
+        result, cats, diffs = anthr.process(payload)
+        assert "机密" in cats
+        assert "[REDACTED:机密]" in result["messages"][0]["content"]
+
+    def test_bearer_token_with_newline(self):
+        redactor = Redactor(rules=build_rules())
+        text = "Authorization: Bearer\nabcdefghijklmnopqrstuvwxyz1234"
+        result, cats = redactor.redact(text)
+        assert "bearer_token" in cats
+        assert "[REDACTED:bearer_token]" in result
+        assert "abcdefghijklmnopqrstuvwxyz1234" not in result

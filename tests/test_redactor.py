@@ -80,21 +80,6 @@ class TestAllowlist:
         assert "[REDACTED:email]" in result
 
 
-class TestCodeFenceSkip:
-    def test_phone_in_code_fence_not_redacted(self):
-        rules = build_rules()
-        redactor = Redactor(rules=rules)
-        text = "```\n555-123-4567\n```"
-        result, cats = redactor.redact(text)
-        assert "555-123-4567" in result
-
-    def test_phone_outside_code_fence_redacted(self):
-        rules = build_rules()
-        redactor = Redactor(rules=rules)
-        text = "Call me at 555-123-4567 please"
-        result, cats = redactor.redact(text)
-        assert "[REDACTED:phone]" in result
-
 
 class TestCustomRules:
     def test_custom_regex_rule(self):
