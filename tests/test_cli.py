@@ -1,5 +1,5 @@
 """
-Tests for CLI commands: cg rules (non-interactive) and context_guard.py --test / --redact-pipe.
+Tests for CLI commands: cg block/unblock/list and context_guard.py --test / --redact-pipe.
 """
 
 import json
@@ -174,6 +174,121 @@ class TestRulesAllowlist:
         cg_mod, _, _ = cg_env
         with pytest.raises(SystemExit):
             cg_mod._rules_deny("not_in_list")
+
+
+class TestCmdBlock:
+    def test_block_keyword(self, cg_env):
+        cg_mod, config_file, _ = cg_env
+        cg_mod.cmd_block(["keyword", "Titan"])
+        data = json.loads(config_file.read_text())
+        assert any(kr["keyword"] == "Titan" for kr in data["keyword_rules"])
+
+    def test_block_regex(self, cg_env):
+        cg_mod, config_file, _ = cg_env
+        cg_mod.cmd_block(["regex", r"PROJ-\d+"])
+        data = json.loads(config_file.read_text())
+        assert any(ep["pattern"] == r"PROJ-\d+" for ep in data["extra_patterns"])
+        assert any(ep["category"] == "custom_regex" for ep in data["extra_patterns"])
+
+    def test_block_known_rule_enables(self, cg_env):
+        cg_mod, config_file, _ = cg_env
+        # First disable it, then block should re-enable
+        cg_mod._rules_disable("email")
+        data = json.loads(config_file.read_text())
+        assert "email" in data["disabled_rules"]
+        cg_mod.cmd_block(["email"])
+        data = json.loads(config_file.read_text())
+        assert "email" not in data["disabled_rules"]
+
+    def test_block_catalog_rule_enables(self, cg_env):
+        cg_mod, config_file, _ = cg_env
+        cg_mod.cmd_block(["credit_card"])
+        data = json.loads(config_file.read_text())
+        assert "credit_card" in data["enabled_rules"]
+
+    def test_block_allowlisted_value_removes(self, cg_env):
+        cg_mod, _, allow_file = cg_env
+        cg_mod._rules_allow("abc@test.com")
+        cg_mod.cmd_block(["abc@test.com"])
+        assert "abc@test.com" not in allow_file.read_text()
+
+    def test_block_unknown_value_errors(self, cg_env):
+        cg_mod, _, _ = cg_env
+        with pytest.raises(SystemExit):
+            cg_mod.cmd_block(["some_random_value"])
+
+    def test_block_no_args_exits(self, cg_env):
+        cg_mod, _, _ = cg_env
+        with pytest.raises(SystemExit):
+            cg_mod.cmd_block([])
+
+
+class TestCmdUnblock:
+    def test_unblock_keyword(self, cg_env):
+        cg_mod, config_file, _ = cg_env
+        cg_mod._rules_add_keyword("Titan")
+        cg_mod.cmd_unblock(["keyword", "Titan"])
+        data = json.loads(config_file.read_text())
+        assert not any(kr["keyword"] == "Titan" for kr in data["keyword_rules"])
+
+    def test_unblock_regex(self, cg_env):
+        cg_mod, config_file, _ = cg_env
+        cg_mod._rules_add_pattern("custom_regex", r"PROJ-\d+")
+        cg_mod.cmd_unblock(["regex", r"PROJ-\d+"])
+        data = json.loads(config_file.read_text())
+        assert not any(ep["pattern"] == r"PROJ-\d+" for ep in data["extra_patterns"])
+
+    def test_unblock_known_rule_disables(self, cg_env):
+        cg_mod, config_file, _ = cg_env
+        cg_mod.cmd_unblock(["email"])
+        data = json.loads(config_file.read_text())
+        assert "email" in data["disabled_rules"]
+
+    def test_unblock_catalog_rule_disables(self, cg_env):
+        cg_mod, config_file, _ = cg_env
+        cg_mod._rules_enable("credit_card")
+        cg_mod.cmd_unblock(["credit_card"])
+        data = json.loads(config_file.read_text())
+        assert "credit_card" in data["disabled_rules"]
+
+    def test_unblock_bare_value_adds_to_allowlist(self, cg_env):
+        cg_mod, _, allow_file = cg_env
+        cg_mod.cmd_unblock(["abc@test.com"])
+        assert "abc@test.com" in allow_file.read_text()
+
+    def test_unblock_already_allowed_noop(self, cg_env, capsys):
+        cg_mod, _, _ = cg_env
+        cg_mod._rules_allow("abc@test.com")
+        cg_mod.cmd_unblock(["abc@test.com"])
+        out = capsys.readouterr().out
+        assert "already in allowlist" in out
+
+    def test_unblock_no_args_exits(self, cg_env):
+        cg_mod, _, _ = cg_env
+        with pytest.raises(SystemExit):
+            cg_mod.cmd_unblock([])
+
+
+class TestCmdList:
+    def test_list_runs(self, cg_env, capsys):
+        cg_mod, _, _ = cg_env
+        cg_mod.cmd_list([])
+        out = capsys.readouterr().out
+        assert "Base rules" in out
+
+
+class TestRemovePatternByRegex:
+    def test_remove_by_regex_string(self, cg_env):
+        cg_mod, config_file, _ = cg_env
+        cg_mod._rules_add_pattern("custom_regex", r"PROJ-\d+")
+        cg_mod._rules_remove_pattern_by_regex(r"PROJ-\d+")
+        data = json.loads(config_file.read_text())
+        assert not any(ep["pattern"] == r"PROJ-\d+" for ep in data["extra_patterns"])
+
+    def test_remove_nonexistent_regex_exits(self, cg_env):
+        cg_mod, _, _ = cg_env
+        with pytest.raises(SystemExit):
+            cg_mod._rules_remove_pattern_by_regex("nonexistent")
 
 
 # ---------------------------------------------------------------------------

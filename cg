@@ -3,14 +3,17 @@
 cg — context guard control CLI
 
 Usage:
-  cg start      Start proxy in background
-  cg stop       Stop proxy
-  cg pause      Pause filtering (proxy stays up)
-  cg resume     Resume filtering
-  cg status     Show running state and today's stats
-  cg rules      Manage detection rules (interactive)
-  cg update     Check for updates
-  cg uninstall  Completely remove context guard
+  cg start                  Start proxy in background
+  cg stop                   Stop proxy
+  cg pause                  Pause filtering (proxy stays up)
+  cg resume                 Resume filtering
+  cg status                 Show running state and today's stats
+  cg block <rule|type arg>  Enable a rule or add keyword/regex
+  cg unblock <rule|value>   Disable a rule, remove keyword/regex, or allowlist
+  cg list                   Show all rules
+  cg rules                  Manage detection rules (interactive)
+  cg update                 Check for updates
+  cg uninstall              Completely remove context guard
 """
 
 from __future__ import annotations
@@ -404,6 +407,19 @@ def _rules_remove_pattern(category: str) -> None:
     print(f"✓ pattern removed: {category}")
 
 
+def _rules_remove_pattern_by_regex(pattern: str) -> None:
+    """Remove a custom pattern by matching its regex string."""
+    data = _load_config_data()
+    extra = data.get("extra_patterns", [])
+    new = [ep for ep in extra if ep.get("pattern") != pattern]
+    if len(new) == len(extra):
+        print(f"✗ pattern not found: /{pattern}/")
+        sys.exit(1)
+    data["extra_patterns"] = new
+    _save_config_data(data)
+    print(f"✓ pattern removed: /{pattern}/")
+
+
 def _rules_allow(value: str) -> None:
     entries = _load_allow_entries()
     if value in entries:
@@ -687,6 +703,97 @@ def cmd_rules(args: list[str]) -> None:
         sys.exit(1)
 
 
+# ── block / unblock / list ────────────────────────────────────────────
+
+def _is_known_rule(name: str) -> bool:
+    """Check if name is a base or catalog rule."""
+    base_cats = {cat for cat, _ in _get_base_rules()}
+    catalog = _get_catalog_rules()
+    return name in base_cats or name in catalog
+
+
+def cmd_block(args: list[str]) -> None:
+    """Block (redact) something: a rule, keyword, regex, or deny an allowlisted value."""
+    if not args:
+        print("Usage: cg block <rule|keyword <kw>|regex <pattern>|value>")
+        sys.exit(1)
+
+    sub = args[0]
+
+    # cg block keyword "X"
+    if sub == "keyword" and len(args) >= 2:
+        sev = args[2] if len(args) >= 3 else "sensitive"
+        _rules_add_keyword(args[1], sev)
+        return
+
+    # cg block regex "pattern"
+    if sub == "regex" and len(args) >= 2:
+        pattern = args[1]
+        sev = args[2] if len(args) >= 3 else "sensitive"
+        category = "custom_regex"
+        _rules_add_pattern(category, pattern, sev)
+        return
+
+    # Bare argument: disambiguation
+    name = sub
+
+    # 1. Known rule name → enable
+    if _is_known_rule(name):
+        _rules_enable(name)
+        return
+
+    # 2. In allowlist → remove from allowlist (deny)
+    entries = _load_allow_entries()
+    if name in entries:
+        _rules_deny(name)
+        return
+
+    # 3. Otherwise → error with hint
+    print(f'✗ unknown rule: {name}. Did you mean `cg block keyword "{name}"`?')
+    sys.exit(1)
+
+
+def cmd_unblock(args: list[str]) -> None:
+    """Unblock (stop redacting) something: a rule, keyword, regex, or allowlist a value."""
+    if not args:
+        print("Usage: cg unblock <rule|keyword <kw>|regex <pattern>|value>")
+        sys.exit(1)
+
+    sub = args[0]
+
+    # cg unblock keyword "X"
+    if sub == "keyword" and len(args) >= 2:
+        _rules_remove_keyword(args[1])
+        return
+
+    # cg unblock regex "pattern"
+    if sub == "regex" and len(args) >= 2:
+        _rules_remove_pattern_by_regex(args[1])
+        return
+
+    # Bare argument: disambiguation
+    name = sub
+
+    # 1. Known rule name → disable
+    if _is_known_rule(name):
+        _rules_disable(name)
+        return
+
+    # 2. Already in allowlist → tell user
+    entries = _load_allow_entries()
+    if name in entries:
+        print(f"  already in allowlist: {name}")
+        return
+
+    # 3. Otherwise → add to allowlist
+    _rules_allow(name)
+
+
+def cmd_list(_args: list[str]) -> None:
+    """Show all rules."""
+    _rules_list_noninteractive()
+
+
 _COMMANDS = {
     "start": cmd_start,
     "stop": cmd_stop,
@@ -701,6 +808,9 @@ _COMMANDS_WITH_ARGS = {
     "_acquire": cmd_acquire,
     "_release": cmd_release,
     "rules": cmd_rules,
+    "block": cmd_block,
+    "unblock": cmd_unblock,
+    "list": cmd_list,
 }
 
 
