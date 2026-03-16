@@ -190,9 +190,10 @@ read -r -d '' CG_FUNCTION << 'SHELL_FUNC' || true
 export ANTHROPIC_BASE_URL="http://127.0.0.1:8765"
 cg() {
     case "$1" in
-        stop)    python3 "$HOME/.context_guard/cg" stop && unset ANTHROPIC_BASE_URL ;;
+        stop)      python3 "$HOME/.context_guard/cg" stop && unset ANTHROPIC_BASE_URL ;;
+        uninstall) python3 "$HOME/.context_guard/cg" uninstall; unset ANTHROPIC_BASE_URL ;;
         no-guard)  shift; (unset ANTHROPIC_BASE_URL; claude "$@") ;;
-        *)       python3 "$HOME/.context_guard/cg" "$@" ;;
+        *)         python3 "$HOME/.context_guard/cg" "$@" ;;
     esac
 }
 # END context_guard
