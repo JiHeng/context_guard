@@ -27,10 +27,11 @@ The installer:
 3. Installs a `/cg` slash command and status line in Claude Code
 4. Registers session hooks so the proxy starts/stops automatically
 
-After installation, reload your shell to activate:
+After installation, reload your shell to activate the `cg` command:
 ```bash
 source ~/.bashrc   # or ~/.zshrc
 ```
+Or simply open a new terminal tab/window.
 
 **Then just run `claude` as normal. The proxy starts automatically.**
 
