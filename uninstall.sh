@@ -4,6 +4,9 @@
 
 set -e
 
+# Portable in-place sed (BSD vs GNU)
+_sed_i() { if sed --version 2>/dev/null | grep -q GNU; then sed -i "$@"; else sed -i '' "$@"; fi; }
+
 INSTALL_DIR="$HOME/.context_guard"
 CLAUDE_DIR="$HOME/.claude"
 CLAUDE_SETTINGS="$CLAUDE_DIR/settings.json"
@@ -41,9 +44,9 @@ fi
 # --- 2. Remove shell RC block ---
 for RC_FILE in "$HOME/.bashrc" "$HOME/.zshrc"; do
     if [ -f "$RC_FILE" ] && grep -qF '# BEGIN context_guard' "$RC_FILE" 2>/dev/null; then
-        sed -i '/^# BEGIN context_guard$/,/^# END context_guard$/d' "$RC_FILE"
+        _sed_i '/^# BEGIN context_guard$/,/^# END context_guard$/d' "$RC_FILE"
         # Remove trailing blank line left behind
-        sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$RC_FILE"
+        _sed_i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$RC_FILE"
         echo "[context_guard] Cleaned $RC_FILE"
     fi
 done

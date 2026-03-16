@@ -4,6 +4,9 @@
 
 set -e
 
+# Portable in-place sed (BSD vs GNU)
+_sed_i() { if sed --version 2>/dev/null | grep -q GNU; then sed -i "$@"; else sed -i '' "$@"; fi; }
+
 INSTALL_DIR="$HOME/.context_guard"
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -57,7 +60,7 @@ fi
 
 cp "$REPO_DIR/claude_code/commands/cg.md" "$TARGET"
 if [ "$CMD_NAME" != "cg" ]; then
-    sed -i "s|/cg\`|/${CMD_NAME}\`|g" "$TARGET"
+    _sed_i "s|/cg\`|/${CMD_NAME}\`|g" "$TARGET"
 fi
 echo "[context_guard] Installed /${CMD_NAME} command → $TARGET"
 
@@ -198,13 +201,13 @@ SHELL_FUNC
 if [ -n "$RC_FILE" ]; then
     # Remove old-style block if present (upgrade path)
     if grep -qF 'context_guard — redacting proxy' "$RC_FILE" 2>/dev/null; then
-        sed -i '/# context_guard — redacting proxy/,/^}$/d' "$RC_FILE"
+        _sed_i '/# context_guard — redacting proxy/,/^}$/d' "$RC_FILE"
         echo "[context_guard] Removed old shell function from $RC_FILE"
     fi
 
     # Remove existing BEGIN/END block if present (re-install)
     if grep -qF '# BEGIN context_guard' "$RC_FILE" 2>/dev/null; then
-        sed -i '/^# BEGIN context_guard$/,/^# END context_guard$/d' "$RC_FILE"
+        _sed_i '/^# BEGIN context_guard$/,/^# END context_guard$/d' "$RC_FILE"
         echo "[context_guard] Removed previous shell block from $RC_FILE"
     fi
 
