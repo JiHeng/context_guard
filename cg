@@ -13,8 +13,11 @@ Usage:
   cg uninstall  Completely remove context guard
 """
 
+from __future__ import annotations
+
 import json
 import os
+import platform
 import re
 import signal
 import subprocess
@@ -56,18 +59,30 @@ def _kill_stale_port_holder() -> None:
         sock.bind(("127.0.0.1", 8765))
         sock.close()
     except OSError:
-        # Port in use by orphan — find and kill via ss
+        # Port in use by orphan — find and kill
         sock.close()
-        result = subprocess.run(
-            ["ss", "-tlnp", "sport = :8765"],
-            capture_output=True, text=True,
-        )
-        for line in result.stdout.splitlines():
-            m = re.search(r'pid=(\d+)', line)
-            if m:
-                os.kill(int(m.group(1)), signal.SIGTERM)
-                time.sleep(0.3)
-                break
+        if platform.system() == "Darwin":
+            result = subprocess.run(
+                ["lsof", "-ti", "tcp:8765"],
+                capture_output=True, text=True,
+            )
+            for line in result.stdout.strip().splitlines():
+                pid = line.strip()
+                if pid.isdigit():
+                    os.kill(int(pid), signal.SIGTERM)
+                    time.sleep(0.3)
+                    break
+        else:
+            result = subprocess.run(
+                ["ss", "-tlnp", "sport = :8765"],
+                capture_output=True, text=True,
+            )
+            for line in result.stdout.splitlines():
+                m = re.search(r'pid=(\d+)', line)
+                if m:
+                    os.kill(int(m.group(1)), signal.SIGTERM)
+                    time.sleep(0.3)
+                    break
 
 
 def cmd_start() -> None:

@@ -4,6 +4,7 @@ Validators for matched PII/secret patterns — reduce false positives.
 Each validator returns True if the match looks like a real sensitive value,
 False if it's likely a false positive that should be skipped.
 """
+from __future__ import annotations
 
 import re
 from typing import Callable

@@ -2,6 +2,7 @@
 Redactor: replaces detected sensitive values with [REDACTED:category].
 Supports allowlist to skip redaction for whitelisted values.
 """
+from __future__ import annotations
 
 from engine.rules import build_rules
 from engine.validators import find_code_fence_ranges, is_in_code_fence

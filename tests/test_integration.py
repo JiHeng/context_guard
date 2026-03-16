@@ -2,6 +2,7 @@
 Integration tests: full pipeline from payload → redaction → audit log.
 Also covers false-positive validation through the complete stack.
 """
+from __future__ import annotations
 
 import json
 import re

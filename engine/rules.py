@@ -4,6 +4,7 @@ Each rule is a Rule object: (category, severity, pattern, source, description).
 
 Use build_rules(config) to get the active rule list.
 """
+from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field

@@ -1,6 +1,7 @@
 """
 Local audit logger. Records redaction events without storing raw sensitive data.
 """
+from __future__ import annotations
 
 import datetime
 from pathlib import Path

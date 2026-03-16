@@ -2,6 +2,7 @@
 HTTP proxy server: intercepts POST /v1/messages (Anthropic) and
 POST /v1/chat/completions (OpenAI), redacts PII/secrets, then forwards upstream.
 """
+from __future__ import annotations
 
 import json
 import os
