@@ -141,6 +141,10 @@ From the terminal:
 cg uninstall
 ```
 
+## Known issues
+
+- **Status line shows `cg: OFF` until the first message.** The status line renders before the SessionStart hook has started the proxy. After the first message, the status updates correctly.
+
 ## Disclaimer
 
 This is a personal project provided as-is, with no warranties of any kind. The author is not responsible for any damages, data loss, or security incidents arising from its use. Use at your own risk.
