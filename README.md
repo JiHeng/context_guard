@@ -1,12 +1,14 @@
-# Context Guard
+# Context Guard — Privacy Proxy for Claude Code
 
 > Let Claude Code read your files, not your secrets.
 
-Context Guard selectively redacts sensitive information—such as SSNs, email addresses, phone numbers, and anything else you define—before it enters model context.
+**Context Guard** selectively redacts sensitive information — such as SSNs, email addresses, phone numbers, and anything else you define — before it enters model context.
 
-One-command installation and set up in Claude. No custom hooks, scripts, configuration.
+One-command installation. No custom hooks, scripts, or configuration required.
 
-## Quick install
+* * *
+
+## 🚀 Quick Install
 
 **macOS / Linux / WSL:**
 
@@ -32,7 +34,9 @@ source ~/.bashrc   # or ~/.zshrc
 
 **Then just run `claude` as normal. The proxy starts automatically.**
 
-## How it works
+* * *
+
+## 🧩 How It Works
 
 ```
 Claude Code
@@ -44,23 +48,33 @@ api.anthropic.com
 
 Every outbound message is scanned against a rule set. Matches are replaced with tokens like `[REDACTED:email]` before the request reaches the API. The model sees the redacted version — your real data never leaves your machine.
 
-## What gets redacted
+* * *
 
-**On by default:** API keys, AWS keys, tokens, JWTs, bearer tokens, private keys, env secrets, database credentials, email addresses, phone numbers, URL tokens.
+## 🔒 What Gets Redacted
 
-**Available to enable:** Credit cards, SSNs, Chinese national IDs, passports, IBANs, IP addresses, UUIDs, dates of birth.
+| Category | Rules | Default |
+|----------|-------|---------|
+| **Credentials** | API keys, AWS keys, tokens, JWTs, bearer tokens, private keys, env secrets, database credentials | ✅ On |
+| **Personal Info** | Email addresses, phone numbers | ✅ On |
+| **URL Tokens** | Tokens embedded in URLs | ✅ On |
+| **Financial** | Credit cards, IBANs | ⚙️ Opt-in |
+| **Identity Docs** | SSNs, Chinese national IDs, passports | ⚙️ Opt-in |
+| **Network / IDs** | IP addresses, UUIDs | ⚙️ Opt-in |
+| **Dates** | Dates of birth | ⚙️ Opt-in |
 
-You can also define your own deny and allow list.
+You can also define your own **deny list** and **allow list**.
 
-## How-to guide
+* * *
+
+## 🛠 How-To Guide
 
 ### Manage rules with `/cg`
 
 Context Guard is managed with `/cg` inside Claude Code (or the alternative name you picked if `/cg` was already taken). Just `/cg` followed by what you want to do.
 
-**Want to manage it in terminal?** Just remove the `/`, and run `cg`
+**Want to manage it in terminal?** Just remove the `/`, and run `cg`.
 
-**Examples**
+**Examples:**
 
 ```
 /cg enable credit card detection
@@ -82,46 +96,45 @@ Context Guard is managed with `/cg` inside Claude Code (or the alternative name 
 /cg rules add pattern "internal_id" "PROJ-\d+"  # custom regex
 ```
 
-**Add custom keyword rules**
+* * *
 
-Block specific words or phrases from being sent to the API:
+### 💡 Tips
 
-```bash
-/cg rules add keyword "Project Titan"
-/cg rules add keyword "Confidential"
-```
+- **Custom keywords** — block specific words or phrases from being sent to the API:
+  ```bash
+  /cg rules add keyword "Project Titan"
+  /cg rules add keyword "Confidential"
+  ```
+  Keywords are matched case-insensitively with word boundaries.
 
-Keywords are matched case-insensitively with word boundaries.
+- **Custom regex patterns** — match structured data:
+  ```
+  /cg rules add pattern "employee_id" "EMP-\d{6}"
+  ```
 
-**Add custom regex patterns**
+- **Allowlist values** — if a legitimate value is being redacted:
+  ```
+  /cg rules allow "alice@yourcompany.com"
+  ```
 
-```
-/cg rules add pattern "employee_id" "EMP-\d{6}"
-```
+- **Regex allowlist** — allowlist by pattern:
+  ```
+  /cg rules allow "re:.*@yourcompany\.com"
+  ```
 
-**Allowlist values**
+* * *
 
-If a legitimate value is being redacted, add it to the allowlist:
-
-```
-/cg rules allow "alice@yourcompany.com"
-```
-
-Regex allowlist entries:
-```
-/cg rules allow "re:.*@yourcompany\.com"
-```
-
-
-### Check status
+### 📊 Check Status
 
 ```
 /cg status
 ```
 
-The status line in Claude Code also shows the current state: `[cg: ON, 3 filtered]`, `[cg: PAUSED]`, or `[cg: OFF]`.
+The status line in Claude Code shows the current state: `[cg: ON, 3 filtered]`, `[cg: PAUSED]`, or `[cg: OFF]`.
 
-### Start and stop the proxy
+* * *
+
+### ⚙️ Start and Stop the Proxy
 
 ```
 /cg start       # start in background
@@ -134,7 +147,9 @@ To stop the proxy, exit Claude Code first, then run from the terminal:
 cg stop
 ```
 
-### Uninstall
+* * *
+
+### 🗑 Uninstall
 
 From the terminal:
 ```bash
@@ -145,7 +160,34 @@ cg uninstall
 
 - **Status line shows `cg: OFF` until the first message.** The status line renders before the SessionStart hook has started the proxy. After the first message, the status updates correctly.
 
-## Disclaimer
+
+## ❓ FAQ
+
+**`cg` triggers an Xcode Command Line Tools install dialog on macOS**
+
+On macOS, the system `python3` binary is a stub provided by Xcode Command Line Tools. Without the tools installed, any `cg` command triggers this prompt:
+
+```
+xcode-select: note: No developer tools were found, requesting install.
+```
+
+**Fix:** Install the Command Line Tools, then retry:
+
+```bash
+xcode-select --install
+# follow the dialog, then verify:
+python3 --version
+cg status
+```
+
+If Xcode is installed at a non-default path:
+
+```bash
+sudo xcode-select --switch /path/to/Xcode.app
+```
+
+* * *
+
+## ⚠️ Disclaimer
 
 This is a personal project provided as-is, with no warranties of any kind. The author is not responsible for any damages, data loss, or security incidents arising from its use. Use at your own risk.
-
