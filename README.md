@@ -1,4 +1,4 @@
-# Context Guard — redact sensitive Info in model context
+# Context Guard — no sensitive info in model context
 
 > Let Claude Code read your files, not your secrets.
 
