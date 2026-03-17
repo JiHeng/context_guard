@@ -1,4 +1,4 @@
-# Context Guard — Privacy Proxy for Claude Code
+# Context Guard — redact sensitive Info in model context
 
 > Let Claude Code read your files, not your secrets.
 
